@@ -32,7 +32,7 @@
  * atomic, which is particularly important when we are trying to ensure 
  * that shared pages stay shared while being swapped.
  */
-
+// 页面交换到 swap 分区中的启动硬件 IO
 static int rw_swap_page_base(int rw, swp_entry_t entry, struct page *page)
 {
 	unsigned long offset;
