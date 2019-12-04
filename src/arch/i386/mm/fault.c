@@ -144,6 +144,7 @@ extern unsigned long idt;
  *	bit 1 == 0 means read, 1 means write
  *	bit 2 == 0 means kernel, 1 means user-mode
  */
+// DONE 处理分页异常
 asmlinkage void do_page_fault(struct pt_regs *regs, unsigned long error_code)
 {
 	struct task_struct *tsk;
@@ -237,12 +238,13 @@ good_area:
 				goto bad_area;
 	}
 
- survive:
+survive:
 	/*
 	 * If for any reason at all we couldn't handle the fault,
 	 * make sure we exit gracefully rather than endlessly redo
 	 * the fault.
 	 */
+	// 如果没有正常解决异常，应当处理妥当
 	switch (handle_mm_fault(mm, vma, address, write)) {
 	case 1:
 		tsk->min_flt++;

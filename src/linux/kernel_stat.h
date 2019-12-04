@@ -24,8 +24,8 @@ struct kernel_stat {
 	unsigned int dk_drive_wio[DK_MAX_MAJOR][DK_MAX_DISK];
 	unsigned int dk_drive_rblk[DK_MAX_MAJOR][DK_MAX_DISK];
 	unsigned int dk_drive_wblk[DK_MAX_MAJOR][DK_MAX_DISK];
-	unsigned int pgpgin, pgpgout;
-	unsigned int pswpin, pswpout;
+	unsigned int pgpgin, pgpgout;							// 指主存(内存)与块设备(硬盘)之间的page in/out的页数.
+	unsigned int pswpin, pswpout;							// 指虚拟内存中,从块设备swap区中读入/读出的页数
 #if !defined(CONFIG_ARCH_S390)
 	unsigned int irqs[NR_CPUS][NR_IRQS];
 #endif

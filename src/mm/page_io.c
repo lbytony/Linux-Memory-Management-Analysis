@@ -32,7 +32,8 @@
  * atomic, which is particularly important when we are trying to ensure 
  * that shared pages stay shared while being swapped.
  */
-// 页面交换到 swap 分区中的启动硬件 IO
+// 在调用rw_swap_page之前为这个交换页面创建一个唯一的交换缓存条目
+// 确保为交换项保留一个内存页，该页上的普通VM页锁也可以作为交换项的锁。
 static int rw_swap_page_base(int rw, swp_entry_t entry, struct page *page)
 {
 	unsigned long offset;
@@ -42,6 +43,7 @@ static int rw_swap_page_base(int rw, swp_entry_t entry, struct page *page)
 	int block_size;
 	struct inode *swapf = 0;
 
+	// ?: READ --> 清除过期页面
 	if (rw == READ) {
 		ClearPageUptodate(page);
 		kstat.pswpin++;
@@ -55,8 +57,7 @@ static int rw_swap_page_base(int rw, swp_entry_t entry, struct page *page)
 		block_size = PAGE_SIZE;
 	} else if (swapf) {
 		int i, j;
-		unsigned int block = offset
-			<< (PAGE_SHIFT - swapf->i_sb->s_blocksize_bits);
+		unsigned int block = offset	<< (PAGE_SHIFT - swapf->i_sb->s_blocksize_bits);
 
 		block_size = swapf->i_sb->s_blocksize;
 		for (i=0, j=0; j< PAGE_SIZE ; i++, j += block_size)

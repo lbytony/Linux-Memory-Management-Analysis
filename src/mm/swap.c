@@ -12,6 +12,8 @@
  * Swap aging added 23.2.95, Stephen Tweedie.
  * Buffermem limits added 12.3.98, Rik van Riel.
  */
+// active
+// lru_cache add/del
 
 #include <linux/mm.h>
 #include <linux/kernel_stat.h>
@@ -25,7 +27,7 @@
 #include <asm/pgtable.h>
 
 /* How many pages do we try to swap or page in/out together? */
-int page_cluster;
+int page_cluster;	// 换页个数
 
 pager_daemon_t pager_daemon = {
 	512,	/* base number for calculating the number of tries */
@@ -36,6 +38,8 @@ pager_daemon_t pager_daemon = {
 /*
  * Move an inactive page to the active list.
  */
+// 激活未上锁的页
+// ?: 如果 LRU && incativate --> 移除未激活，移入激活
 static inline void activate_page_nolock(struct page * page)
 {
 	if (PageLRU(page) && !PageActive(page)) {
@@ -55,11 +59,13 @@ void activate_page(struct page * page)
  * lru_cache_add: add a page to the page lists
  * @page: the page to add
  */
+// 加页
+// 核心在swap.h里
 void lru_cache_add(struct page * page)
 {
 	if (!TestSetPageLRU(page)) {
 		spin_lock(&pagemap_lru_lock);
-		add_page_to_inactive_list(page);
+		add_page_to_inactive_list(page);	// 加页加入未激活表中
 		spin_unlock(&pagemap_lru_lock);
 	}
 }
@@ -71,13 +77,14 @@ void lru_cache_add(struct page * page)
  * This function is for when the caller already holds
  * the pagemap_lru_lock.
  */
+// 从页列表中删除页
 void __lru_cache_del(struct page * page)
 {
 	if (TestClearPageLRU(page)) {
 		if (PageActive(page)) {
-			del_page_from_active_list(page);
+			del_page_from_active_list(page);		// 从激活删页
 		} else {
-			del_page_from_inactive_list(page);
+			del_page_from_inactive_list(page);		// 从未激活删页
 		}
 	}
 }
@@ -86,6 +93,7 @@ void __lru_cache_del(struct page * page)
  * lru_cache_del: remove a page from the page lists
  * @page: the page to remove
  */
+// LRU方式缓存删除页
 void lru_cache_del(struct page * page)
 {
 	spin_lock(&pagemap_lru_lock);
@@ -96,8 +104,11 @@ void lru_cache_del(struct page * page)
 /*
  * Perform any setup for the swap system
  */
+// 初始化换页过程
+// 不重要，没有用到
 void __init swap_setup(void)
 {
+	// TODO why 20-PAGE_SHIFT? 
 	unsigned long megs = num_physpages >> (20 - PAGE_SHIFT);
 
 	/* Use a smaller cluster for small-memory machines */
