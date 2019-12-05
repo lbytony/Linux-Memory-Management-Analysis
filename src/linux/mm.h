@@ -149,17 +149,23 @@ struct vm_operations_struct {
  * TODO: make this structure smaller, it could be as small as 32 bytes.
  */
 typedef struct page {
+	// 将页挂在不同用途的链表中
 	struct list_head list;		/* ->mapping has some page lists. */
+	// page缓冲区链表的表头指针，页面数量，操作函数
 	struct address_space *mapping;	/* The inode (or ...) we belong to. */
+	// 页被换出时index对其在交换空间位置进行索引
 	unsigned long index;		/* Our offset within mapping. */
+	// page缓冲区链表元素的连接。缓冲区的链表数据域是page
 	struct page *next_hash;		/* Next page sharing our hash bucket in
 					   the pagecache hash table. */
+	// 目前使用该页面的用户数
 	atomic_t count;			/* Usage count, see below. */
 	unsigned long flags;		/* atomic flags, some possibly
 					   updated asynchronously */
 	struct list_head lru;		/* Pageout list, eg. active_list;
 					   protected by pagemap_lru_lock !! */
 	wait_queue_head_t wait;		/* Page locked?  Stand in line... */
+	// 指向前一个元素的next_hash域
 	struct page **pprev_hash;	/* Complement to *next_hash. */
 	struct buffer_head * buffers;	/* Buffer maps us to a disk block. */
 	void *virtual;			/* Kernel virtual address (NULL if
@@ -272,7 +278,7 @@ typedef struct page {
  */
 #define PG_locked		 0	/* Page is locked. Don't touch. */
 #define PG_error		 1
-#define PG_referenced		 2
+#define PG_referenced	 2
 #define PG_uptodate		 3
 #define PG_dirty		 4
 #define PG_unused		 5

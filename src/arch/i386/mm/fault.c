@@ -273,6 +273,7 @@ survive:
  * Something tried to access memory that isn't in our memory map..
  * Fix it, but check if it's kernel or user first..
  */
+// 位置不存在当前map
 bad_area:
 	up_read(&mm->mmap_sem);
 

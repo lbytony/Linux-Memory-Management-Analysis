@@ -17,7 +17,7 @@
 #include <asm/pgalloc.h>
 
 rwlock_t vmlist_lock = RW_LOCK_UNLOCKED;
-struct vm_struct * vmlist;
+struct vm_struct * vmlist;		// 新建了一个vm列表
 
 static inline void free_area_pte(pmd_t * pmd, unsigned long address, unsigned long size)
 {
@@ -168,6 +168,7 @@ inline int vmalloc_area_pages (unsigned long address, unsigned long size,
 	return ret;
 }
 
+// 查找&分配VM空间
 struct vm_struct * get_vm_area(unsigned long size, unsigned long flags)
 {
 	unsigned long addr;
@@ -202,6 +203,7 @@ out:
 	return NULL;
 }
 
+// 释放空间
 void vfree(void * addr)
 {
 	struct vm_struct **p, *tmp;
@@ -226,20 +228,24 @@ void vfree(void * addr)
 	printk(KERN_ERR "Trying to vfree() nonexistent vm area (%p)\n", addr);
 }
 
+// 用户申请大块连续空间
 void * __vmalloc (unsigned long size, int gfp_mask, pgprot_t prot)
 {
 	void * addr;
 	struct vm_struct *area;
 
-	size = PAGE_ALIGN(size);
+	size = PAGE_ALIGN(size);	// 分配的大小
 	if (!size || (size >> PAGE_SHIFT) > num_physpages) {
 		BUG();
 		return NULL;
 	}
+	// 获取VM空间，返回地址
+	// get_vm_area()先调用kmalloc()分配内核空间，然后遍历vmlist，当刚好能放下时，放入。
 	area = get_vm_area(size, VM_ALLOC);
 	if (!area)
 		return NULL;
-	addr = area->addr;
+	addr = area->addr;			// 提取地址
+	// vmalloc_area_pages()用于为申请到的虚拟空间更改页目录、页表
 	if (vmalloc_area_pages(VMALLOC_VMADDR(addr), size, gfp_mask, prot)) {
 		vfree(addr);
 		return NULL;
