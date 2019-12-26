@@ -63,7 +63,7 @@ static int zone_balance_max[MAX_NR_ZONES] __initdata = { 255 , 255, 255, };
  */
 
 static void FASTCALL(__free_pages_ok (struct page *page, unsigned int order));
-static void __free_pages_ok (struct page *page, unsigned int order)
+static void __free_pages_ok (struct page *page, unsigned int order)//page指向要释放空间的第一个页面对应的page结构，order释放页面个数的数量级
 {
 	unsigned long index, page_idx, mask, flags;
 	free_area_t *area;
@@ -73,12 +73,12 @@ static void __free_pages_ok (struct page *page, unsigned int order)
 	/* Yes, think what happens when other parts of the kernel take 
 	 * a reference to a page in order to pin it for io. -ben
 	 */
-	if (PageLRU(page))
-		lru_cache_del(page);
+	if (PageLRU(page))//检查该page是否在page lists中
+		lru_cache_del(page);//如果在page lists中,那么调用该函数将其移出
 
 	if (page->buffers)
 		BUG();
-	if (page->mapping)
+	if (page->mapping)//检测(page - mem_map)即page是否在有效的范围之内
 		BUG();
 	if (!VALID_PAGE(page))
 		BUG();
@@ -90,33 +90,33 @@ static void __free_pages_ok (struct page *page, unsigned int order)
 		BUG();
 	if (PageActive(page))
 		BUG();
-	page->flags &= ~((1<<PG_referenced) | (1<<PG_dirty));
+	page->flags &= ~((1<<PG_referenced) | (1<<PG_dirty));//释放page标志位,进而释放该order页
 
 	if (current->flags & PF_FREE_PAGES)
 		goto local_freelist;
  back_local_freelist:
 
-	zone = page->zone;
+	zone = page->zone; //获取zone。在mem_map初始化free_area_init_core>时，就把每个page所指向的zone指定好了
 
 	mask = (~0UL) << order;
-	base = zone->zone_mem_map;
-	page_idx = page - base;
-	if (page_idx & ~mask)
+	base = zone->zone_mem_map;//base就是zone在mem_map的地址
+	page_idx = page - base;//查看page在zone的第几项,即 求page在mem_map内的下标
+	if (page_idx & ~mask)//页号必须在页块尺寸边界上对齐
 		BUG();
-	index = page_idx >> (1 + order);
+	index = page_idx >> (1 + order); //求在bitmap中的索引
 
-	area = zone->free_area + order;
+	area = zone->free_area + order;//得到该页块的区域，将zone的空闲页块数加上块大小
 
 	spin_lock_irqsave(&zone->lock, flags);
 
-	zone->free_pages -= mask;
+	zone->free_pages -= mask; //每次调用后会加一，mask=-1，空闲链表加1
 
-	while (mask + (1 << (MAX_ORDER-1))) {
+	while (mask + (1 << (MAX_ORDER-1))) {//当order大于MAX_ORDER-1时就结束循环
 		struct page *buddy1, *buddy2;
 
-		if (area >= zone->free_area + MAX_ORDER)
+		if (area >= zone->free_area + MAX_ORDER)//检查area是否在范围内
 			BUG();
-		if (!__test_and_change_bit(index, area->map))
+		if (!__test_and_change_bit(index, area->map)//判断buddy是否空闲
 			/*
 			 * the buddy page is still allocated.
 			 */
@@ -124,28 +124,28 @@ static void __free_pages_ok (struct page *page, unsigned int order)
 		/*
 		 * Move the buddy up one level.
 		 */
-		buddy1 = base + (page_idx ^ -mask);
+		buddy1 = base + (page_idx ^ -mask);//对页块号边界位取反,得到伙伴的起点
 		buddy2 = base + page_idx;
 		if (BAD_RANGE(zone,buddy1))
 			BUG();
 		if (BAD_RANGE(zone,buddy2))
 			BUG();
 
-		memlist_del(&buddy1->list);
+		memlist_del(&buddy1->list);//去除不buddy物理块
 		mask <<= 1;
 		area++;
 		index >>= 1;
 		page_idx &= mask;
-	}
-	memlist_add_head(&(base + page_idx)->list, &area->free_list);
-
+	}//重复循环直到不能再进行合并
+	memlist_add_head(&(base + page_idx)->list, &area->free_list);//放到free_list中去
+	//将合并后的物理块加入free_list中
 	spin_unlock_irqrestore(&zone->lock, flags);
 	return;
 
  local_freelist:
 	if (current->nr_local_pages)
 		goto back_local_freelist;
-	if (in_interrupt())
+	if (in_interrupt())//如果调用时在中断过程中，则转入正常部分
 		goto back_local_freelist;		
 
 	list_add(&page->list, &current->local_pages);
@@ -155,32 +155,32 @@ static void __free_pages_ok (struct page *page, unsigned int order)
 
 #define MARK_USED(index, order, area) \
 	__change_bit((index) >> (1+(order)), (area)->map)
-
-static inline struct page * expand (zone_t *zone, struct page *page,
-	 unsigned long index, int low, int high, free_area_t * area)
+//将大块一分为二，小块插入链表，直到符合要求大小
+static inline struct page * expand (zone_t *zone/*操作所在区*/, struct page *page/*空闲页面块的起始页面指针*/,
+	 unsigned long index/*此页面偏移量*/, int low, int high, free_area_t * area/*要插入层的链表表首地址*/)//
 {
 	unsigned long size = 1 << high;
 
 	while (high > low) {
-		if (BAD_RANGE(zone,page))
+		if (BAD_RANGE(zone,page))//检测
 			BUG();
 		area--;
 		high--;
 		size >>= 1;
-		memlist_add_head(&(page)->list, &(area)->free_list);
-		MARK_USED(index, high, area);
-		index += size;
+		memlist_add_head(&(page)->list, &(area)->free_list);//加入空闲链表
+		MARK_USED(index, high, area);//修改bitmap
+		index += size;//保留的后半块
 		page += size;
 	}
-	if (BAD_RANGE(zone,page))
+	if (BAD_RANGE(zone,page))//检测
 		BUG();
 	return page;
 }
 
 static FASTCALL(struct page * rmqueue(zone_t *zone, unsigned int order));
-static struct page * rmqueue(zone_t *zone, unsigned int order)
-{
-	free_area_t * area = zone->free_area + order;
+static struct page * rmqueue(zone_t *zone, unsigned int order)//rmqueue根据buddy法则 分配合适大小的页块，细分过大的页块，将细分后的页块从源链表删除，并整合入新的链表
+{//
+	free_area_t * area = zone->free_area + order;//free_area[order]就是free_list中含order个空闲页面的数组
 	unsigned int curr_order = order;
 	struct list_head *head, *curr;
 	unsigned long flags;
@@ -189,24 +189,24 @@ static struct page * rmqueue(zone_t *zone, unsigned int order)
 	spin_lock_irqsave(&zone->lock, flags);
 	do {
 		head = &area->free_list;
-		curr = memlist_next(head);
+		curr = memlist_next(head);//成为挂在area所指的free_area数组项后面的空闲页面链表中的第一个链表项的指针
 
-		if (curr != head) {
+		if (curr != head) {//order的链表不为空
 			unsigned int index;
 
-			page = memlist_entry(curr, struct page, list);
+			page = memlist_entry(curr, struct page, list);//从head的链表中取第1个page返回
 			if (BAD_RANGE(zone,page))
-				BUG();
-			memlist_del(curr);
-			index = page - zone->zone_mem_map;
+				BUG();//检查page指向的页面是否被声明为此zone中的页面，并检查是否超出了范围
+			memlist_del(curr);//把curr从空闲链表中移除，即链表中不再管理刚分配的page
+			index = page - zone->zone_mem_map;//得到起始页面的偏移量
 			if (curr_order != MAX_ORDER-1)
-				MARK_USED(index, curr_order, area);
-			zone->free_pages -= 1UL << order;
+				MARK_USED(index, curr_order, area);//将bitmap中相应的位置置1
+			zone->free_pages -= 1UL << order;//zone中含有的free_pages减1
 
-			page = expand(zone, page, index, order, curr_order, area);
+			page = expand(zone, page, index, order, curr_order, area);//调用expand（）将从原来大块中分下来的小块重新合并到链表的新位置
 			spin_unlock_irqrestore(&zone->lock, flags);
 
-			set_page_count(page, 1);
+			set_page_count(page, 1);//初始化引用次数为1
 			if (BAD_RANGE(zone,page))
 				BUG();
 			if (PageLRU(page))
@@ -215,7 +215,7 @@ static struct page * rmqueue(zone_t *zone, unsigned int order)
 				BUG();
 			return page;	
 		}
-		curr_order++;
+		curr_order++;//curr==head说明该order的链表为空，到up-level的order中去找
 		area++;
 	} while (curr_order < MAX_ORDER);
 	spin_unlock_irqrestore(&zone->lock, flags);
@@ -317,24 +317,24 @@ struct page * __alloc_pages(unsigned int gfp_mask, unsigned int order, zonelist_
 
 	zone = zonelist->zones;
 	classzone = *zone;
-	min = 1UL << order;
-	for (;;) {
+	min = 1UL << order; //分配的最小的页面是一个
+	for (;;) { // 遍历zonelist 指向zonelist_t 结构中的zones数组
 		zone_t *z = *(zone++);
 		if (!z)
 			break;
-
+		//查找满足空闲页面多余pages_low的标志的区域
 		min += z->pages_low;
-		if (z->free_pages > min) {
-			page = rmqueue(z, order);
-			if (page)
-				return page;
+		if (z->free_pages > min) { //空闲页面数多于pages_low标志
+			page = rmqueue(z, order);//分配需要的空间
+			if (page)//如果成功
+				return page; // 返回page
 		}
 	}
 
 	classzone->need_balance = 1;
 	mb();
 	if (waitqueue_active(&kswapd_wait))
-		wake_up_interruptible(&kswapd_wait);
+		wake_up_interruptible(&kswapd_wait);//目前无法从任何区域中分配页面，尝试换出部分页面以获得部分空闲页面
 
 	zone = zonelist->zones;
 	min = 1UL << order;
@@ -409,15 +409,15 @@ rebalance:
 /*
  * Common helper functions.
  */
-unsigned long __get_free_pages(unsigned int gfp_mask, unsigned int order)
+unsigned long __get_free_pages(unsigned int gfp_mask, unsigned int order) //使用mm.h中的——__get_free_pages ()函数分配物理页面
 {
 	struct page * page;
 
-	page = alloc_pages(gfp_mask, order);
+	page = alloc_pages(gfp_mask, order);//mm.h 先检查是否超过free_area数组中的最大值，之后用__alloc_pages()从空闲链表分配页面
 	if (!page)
 		return 0;
-	return (unsigned long) page_address(page);
-}
+	return (unsigned long) page_address(page);//将页面mm_struct结构得到其所在的虚拟地址
+}//page_address(page)页面mm_struct结构得到其所在的虚拟地址
 
 unsigned long get_zeroed_page(unsigned int gfp_mask)
 {
@@ -438,7 +438,7 @@ void __free_pages(struct page *page, unsigned int order)
 		__free_pages_ok(page, order);
 }
 
-void free_pages(unsigned long addr, unsigned int order)
+void free_pages(unsigned long addr/*addr是内核态的虚拟空间，用‘__pa()’宏*/, unsigned int order)
 {
 	if (addr != 0)
 		__free_pages(virt_to_page(addr), order);
@@ -643,13 +643,13 @@ void __init free_area_init_core(int nid, pg_data_t *pgdat, struct page **gmap,
 
 	if (zone_start_paddr & ~PAGE_MASK)
 		BUG();
-
+	//计算DMA+NORMAL+HIGHMEM中所有的页帧数
 	totalpages = 0;
 	for (i = 0; i < MAX_NR_ZONES; i++) {
 		unsigned long size = zones_size[i];
 		totalpages += size;
 	}
-	realtotalpages = totalpages;
+	realtotalpages = totalpages;//去掉total pages中的holes
 	if (zholes_size)
 		for (i = 0; i < MAX_NR_ZONES; i++)
 			realtotalpages -= zholes_size[i];
@@ -666,9 +666,9 @@ void __init free_area_init_core(int nid, pg_data_t *pgdat, struct page **gmap,
 	 * PAGE_OFFSET, we need to align the actual array onto a mem map 
 	 * boundary, so that MAP_NR works.
 	 */
-	map_size = (totalpages + 1)*sizeof(struct page);
+	map_size = (totalpages + 1)*sizeof(struct page);//获取map_size的大小
 	if (lmem_map == (struct page *)0) {
-		lmem_map = (struct page *) alloc_bootmem_node(pgdat, map_size);
+		lmem_map = (struct page *) alloc_bootmem_node(pgdat, map_size);//分配页内存
 		lmem_map = (struct page *)(PAGE_OFFSET + 
 			MAP_ALIGN((unsigned long)lmem_map - PAGE_OFFSET));
 	}
@@ -682,17 +682,17 @@ void __init free_area_init_core(int nid, pg_data_t *pgdat, struct page **gmap,
 	 * Initially all pages are reserved - free ones are freed
 	 * up by free_all_bootmem() once the early boot process is
 	 * done.
-	 */
+	 *///初始page链表的结构
 	for (p = lmem_map; p < lmem_map + totalpages; p++) {
-		set_page_count(p, 0);
-		SetPageReserved(p);
+		set_page_count(p, 0);//初始count=0
+		SetPageReserved(p);//fleg=reserved
 		init_waitqueue_head(&p->wait);
 		memlist_init(&p->list);
 	}
 
-	offset = lmem_map - mem_map;	
+	offset = lmem_map - mem_map;	//初始时offset为0
 	for (j = 0; j < MAX_NR_ZONES; j++) {
-		zone_t *zone = pgdat->node_zones + j;
+		zone_t *zone = pgdat->node_zones + j;//初始化zone中的数据
 		unsigned long mask;
 		unsigned long size, realsize;
 
@@ -727,12 +727,12 @@ void __init free_area_init_core(int nid, pg_data_t *pgdat, struct page **gmap,
 
 		if ((zone_start_paddr >> PAGE_SHIFT) & (zone_required_alignment-1))
 			printk("BUG: wrong zone alignment, it will crash\n");
-
+		//初始化mem_map中虚拟地址
 		for (i = 0; i < size; i++) {
 			struct page *page = mem_map + offset + i;
-			page->zone = zone;
+			page->zone = zone;//让zone中的所有page指向zone，
 			if (j != ZONE_HIGHMEM)
-				page->virtual = __va(zone_start_paddr);
+				page->virtual = __va(zone_start_paddr);//指向相应的虚拟地址
 			zone_start_paddr += PAGE_SIZE;
 		}
 

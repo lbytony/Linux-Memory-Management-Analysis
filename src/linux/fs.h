@@ -399,12 +399,12 @@ struct address_space {
 	struct list_head	dirty_pages;	/* list of dirty pages */
 	struct list_head	locked_pages;	/* list of locked pages */
 	unsigned long		nrpages;	/* number of total pages */
-	struct address_space_operations *a_ops;	/* methods */
-	struct inode		*host;		/* owner: inode, block_device */
+	struct address_space_operations *a_ops;	/* methods 操作函数表 */
+	struct inode		*host;		/* owner: inode, block_device 拥有它的结点 */
 	struct vm_area_struct	*i_mmap;	/* list of private mappings */
 	struct vm_area_struct	*i_mmap_shared; /* list of shared mappings */
 	spinlock_t		i_shared_lock;  /* and spinlock protecting it */
-	int			gfp_mask;	/* how to allocate the pages */
+	int			gfp_mask;	/* how to allocate the pages 用于分配页面的掩码 */
 };
 
 struct char_device {
@@ -649,7 +649,7 @@ struct nameidata {
 #define DQUOT_USR_ENABLED	0x01		/* User diskquotas enabled */
 #define DQUOT_GRP_ENABLED	0x02		/* Group diskquotas enabled */
 
-struct quota_mount_options
+quota_mount_options
 {
 	unsigned int flags;			/* Flags for diskquotas on this device */
 	struct semaphore dqio_sem;		/* lock device while I/O in progress */

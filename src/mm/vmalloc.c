@@ -16,8 +16,16 @@
 #include <asm/uaccess.h>
 #include <asm/pgalloc.h>
 
-rwlock_t vmlist_lock = RW_LOCK_UNLOCKED;
-struct vm_struct * vmlist;		// 新建了一个vm列表
+rwlock_t vmlist_lock = RW_LOCK_UNLOCKED;	// 读写互斥锁
+struct vm_struct * vmlist;		// 新建vm列表
+
+ //	PGD 页全局目录
+ //	PMD 页中间目录
+ //	PTE 页表项
+ /*
+  * free-area 释放过程：
+  * 释放pages的时候-->释放pmd的时候-->释放pte-->pte释放完成-->pmd释放完成-->pages释放完成
+  */
 
 static inline void free_area_pte(pmd_t * pmd, unsigned long address, unsigned long size)
 {
@@ -53,6 +61,7 @@ static inline void free_area_pte(pmd_t * pmd, unsigned long address, unsigned lo
 	} while (address < end);
 }
 
+// free pmd <-- free pte
 static inline void free_area_pmd(pgd_t * dir, unsigned long address, unsigned long size)
 {
 	pmd_t * pmd;
@@ -77,6 +86,7 @@ static inline void free_area_pmd(pgd_t * dir, unsigned long address, unsigned lo
 	} while (address < end);
 }
 
+// free pages <-- free pmd
 void vmfree_area_pages(unsigned long address, unsigned long size)
 {
 	pgd_t * dir;
@@ -92,17 +102,21 @@ void vmfree_area_pages(unsigned long address, unsigned long size)
 	flush_tlb_all();
 }
 
+/*
+ * alloc area分配过程：
+ * 分配页表
+ */
 static inline int alloc_area_pte (pte_t * pte, unsigned long address,
 			unsigned long size, int gfp_mask, pgprot_t prot)
 {
 	unsigned long end;
-
 	address &= ~PMD_MASK;
 	end = address + size;
 	if (end > PMD_SIZE)
 		end = PMD_SIZE;
 	do {
 		struct page * page;
+		// 分配一个页面
 		spin_unlock(&init_mm.page_table_lock);
 		page = alloc_page(gfp_mask);
 		spin_lock(&init_mm.page_table_lock);
@@ -117,6 +131,7 @@ static inline int alloc_area_pte (pte_t * pte, unsigned long address,
 	return 0;
 }
 
+// 分配中间页目录
 static inline int alloc_area_pmd(pmd_t * pmd, unsigned long address, unsigned long size, int gfp_mask, pgprot_t prot)
 {
 	unsigned long end;
@@ -127,8 +142,10 @@ static inline int alloc_area_pmd(pmd_t * pmd, unsigned long address, unsigned lo
 		end = PGDIR_SIZE;
 	do {
 		pte_t * pte = pte_alloc(&init_mm, pmd, address);
+		// 内存越界跳出，Error No Memory
 		if (!pte)
 			return -ENOMEM;
+		// 分配pte区域
 		if (alloc_area_pte(pte, address, end - address, gfp_mask, prot))
 			return -ENOMEM;
 		address = (address + PMD_SIZE) & PMD_MASK;
@@ -137,6 +154,7 @@ static inline int alloc_area_pmd(pmd_t * pmd, unsigned long address, unsigned lo
 	return 0;
 }
 
+// 分配页面
 inline int vmalloc_area_pages (unsigned long address, unsigned long size,
                                int gfp_mask, pgprot_t prot)
 {
@@ -148,12 +166,13 @@ inline int vmalloc_area_pages (unsigned long address, unsigned long size,
 	spin_lock(&init_mm.page_table_lock);
 	do {
 		pmd_t *pmd;
-		
+		// 分配pmd空间
 		pmd = pmd_alloc(&init_mm, dir, address);
+		// 是否正常分配？无内存空间
 		ret = -ENOMEM;
 		if (!pmd)
 			break;
-
+		// 
 		ret = -ENOMEM;
 		if (alloc_area_pmd(pmd, address, end - address, gfp_mask, prot))
 			break;
@@ -173,7 +192,7 @@ struct vm_struct * get_vm_area(unsigned long size, unsigned long flags)
 {
 	unsigned long addr;
 	struct vm_struct **p, *tmp, *area;
-
+	// 内核空间的分配
 	area = (struct vm_struct *) kmalloc(sizeof(*area), GFP_KERNEL);
 	if (!area)
 		return NULL;
@@ -203,7 +222,7 @@ out:
 	return NULL;
 }
 
-// 释放空间
+// 释放虚拟内存空间
 void vfree(void * addr)
 {
 	struct vm_struct **p, *tmp;
@@ -234,7 +253,7 @@ void * __vmalloc (unsigned long size, int gfp_mask, pgprot_t prot)
 	void * addr;
 	struct vm_struct *area;
 
-	size = PAGE_ALIGN(size);	// 分配的大小
+	size = PAGE_ALIGN(size);	// 分配的大小 - 调整
 	if (!size || (size >> PAGE_SHIFT) > num_physpages) {
 		BUG();
 		return NULL;
@@ -253,6 +272,7 @@ void * __vmalloc (unsigned long size, int gfp_mask, pgprot_t prot)
 	return addr;
 }
 
+// 虚拟内存读取
 long vread(char *buf, char *addr, unsigned long count)
 {
 	struct vm_struct *tmp;
@@ -291,6 +311,7 @@ finished:
 	return buf - buf_start;
 }
 
+// 虚拟内存写入
 long vwrite(char *buf, char *addr, unsigned long count)
 {
 	struct vm_struct *tmp;
