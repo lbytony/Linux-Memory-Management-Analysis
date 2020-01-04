@@ -3,6 +3,9 @@
     "files.associations": {
         "swapctl.h": "c",
         "tlb.h": "c",
-        "config.h": "c"
+        "config.h": "c",
+        "mman.h": "c",
+        "pagemap.h": "c",
+        "shm.h": "c"
     }
 }

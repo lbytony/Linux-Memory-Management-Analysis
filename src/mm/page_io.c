@@ -109,6 +109,7 @@ void rw_swap_page(int rw, struct page *page)
  * Therefore we can't use it.  Later when we can remove the need for the
  * lock map and we can reduce the number of functions exported.
  */
+// 解锁后需要等待IO
 void rw_swap_page_nolock(int rw, swp_entry_t entry, char *buf)
 {
 	struct page *page = virt_to_page(buf);

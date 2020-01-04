@@ -485,11 +485,19 @@ extern unsigned long do_mmap_pgoff(struct file *file, unsigned long addr,
 static inline unsigned long do_mmap(struct file *file, unsigned long addr,
 	unsigned long len, unsigned long prot,
 	unsigned long flag, unsigned long offset)
+/*
+参数file是指向需要建立虚拟映射的文件
+参数addr指定从何处开始查找一个空闲区域
+参数len给出VMA段的地址空间长度
+参数off是VMA段相对于文件file的起始地址的偏移量
+参数port为VMA段所包含页的访问权限
+参数flags描述VMA段的属性
+*/
 {
 	unsigned long ret = -EINVAL;
-	if ((offset + PAGE_ALIGN(len)) < offset)
+	if ((offset + PAGE_ALIGN(len)) < offset)	//检查页面偏移
 		goto out;
-	if (!(offset & ~PAGE_MASK))
+	if (!(offset & ~PAGE_MASK))		////映射在文件中的偏移量offset必须是以PAGE_SIZE对齐的，否则，函数直接退出
 		ret = do_mmap_pgoff(file, addr, len, prot, flag, offset >> PAGE_SHIFT);
 out:
 	return ret;

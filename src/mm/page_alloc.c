@@ -315,7 +315,7 @@ struct page * __alloc_pages(unsigned int gfp_mask, unsigned int order, zonelist_
 	struct page * page;
 	int freed;
 
-	zone = zonelist->zones;
+	zone = zonelist->zones;//获取该分配策略队列的管理区数据结构指针数组
 	classzone = *zone;
 	min = 1UL << order; //分配的最小的页面是一个
 	for (;;) { // 遍历zonelist 指向zonelist_t 结构中的zones数组
@@ -330,15 +330,15 @@ struct page * __alloc_pages(unsigned int gfp_mask, unsigned int order, zonelist_
 				return page; // 返回page
 		}
 	}
-
+//当分配失败时候没任何动作，而是继续循环去寻找下一个管理区。当我们找到第一个合适的管理区，表示这个管理区是按照指定策略适合的管理区，此时若分配失败，则应该退出。但没有退出这个循环，目的是分配失败时候，放宽要求。继续去寻找下一个管理区，看是否适合。
 	classzone->need_balance = 1;
 	mb();
 	if (waitqueue_active(&kswapd_wait))
 		wake_up_interruptible(&kswapd_wait);//目前无法从任何区域中分配页面，尝试换出部分页面以获得部分空闲页面
-
+	//进程kswapd用来腾出一些页面，为再次内存分配做准备。
 	zone = zonelist->zones;
 	min = 1UL << order;
-	for (;;) {
+	for (;;) {//在腾出一些页面后，再次分配内存。
 		unsigned long local_min;
 		zone_t *z = *(zone++);
 		if (!z)
@@ -354,7 +354,7 @@ struct page * __alloc_pages(unsigned int gfp_mask, unsigned int order, zonelist_
 				return page;
 		}
 	}
-
+	
 	/* here we're in the low on memory slow path */
 
 rebalance:
@@ -373,8 +373,8 @@ rebalance:
 	}
 
 	/* Atomic allocations - we can't balance anything */
-	if (!(gfp_mask & __GFP_WAIT))
-		return NULL;
+	if (!(gfp_mask & __GFP_WAIT))//如果不可等
+		return NULL;//返回NULL分配失败
 
 	page = balance_classzone(classzone, gfp_mask, order, &freed);
 	if (page)
@@ -434,11 +434,11 @@ unsigned long get_zeroed_page(unsigned int gfp_mask)
 
 void __free_pages(struct page *page, unsigned int order)
 {
-	if (!PageReserved(page) && put_page_testzero(page))
+	if (!PageReserved(page) && put_page_testzero(page))//检查是否为保留
 		__free_pages_ok(page, order);
 }
 
-void free_pages(unsigned long addr/*addr是内核态的虚拟空间，用‘__pa()’宏*/, unsigned int order)
+void free_pages(unsigned long addr/*addr是内核态的虚拟空间，用‘__pa()’宏先将3G偏移量去掉*/, unsigned int order)
 {
 	if (addr != 0)
 		__free_pages(virt_to_page(addr), order);
@@ -631,7 +631,7 @@ static inline void build_zonelists(pg_data_t *pgdat)
  *   - mark all memory queues empty
  *   - clear the memory bitmaps
  */
-void __init free_area_init_core(int nid, pg_data_t *pgdat, struct page **gmap,
+void __init free_area_init_core(int nid, pg_data_t *pgdat/*contig_page_data*/, struct page **gmap/*mem_map*/,
 	unsigned long *zones_size, unsigned long zone_start_paddr, 
 	unsigned long *zholes_size, struct page *lmem_map)
 {
@@ -658,6 +658,7 @@ void __init free_area_init_core(int nid, pg_data_t *pgdat, struct page **gmap,
 
 	INIT_LIST_HEAD(&active_list);
 	INIT_LIST_HEAD(&inactive_list);
+	//初始化active_list&inactive_list
 
 	/*
 	 * Some architectures (with lots of mem and discontinous memory
@@ -666,13 +667,13 @@ void __init free_area_init_core(int nid, pg_data_t *pgdat, struct page **gmap,
 	 * PAGE_OFFSET, we need to align the actual array onto a mem map 
 	 * boundary, so that MAP_NR works.
 	 */
-	map_size = (totalpages + 1)*sizeof(struct page);//获取map_size的大小
+	map_size = (totalpages + 1)*sizeof(struct page);//计算map_size的大小
 	if (lmem_map == (struct page *)0) {
-		lmem_map = (struct page *) alloc_bootmem_node(pgdat, map_size);//分配页内存
+		lmem_map = (struct page *) alloc_bootmem_node(pgdat, map_size);//给mem_map分配页内存
 		lmem_map = (struct page *)(PAGE_OFFSET + 
-			MAP_ALIGN((unsigned long)lmem_map - PAGE_OFFSET));
+			MAP_ALIGN((unsigned long)lmem_map - PAGE_OFFSET));//按照page大小对齐
 	}
-	*gmap = pgdat->node_mem_map = lmem_map;
+	*gmap = pgdat->node_mem_map = lmem_map;//设定全局指针
 	pgdat->node_size = totalpages;
 	pgdat->node_start_paddr = zone_start_paddr;
 	pgdat->node_start_mapnr = (lmem_map - mem_map);
@@ -688,7 +689,7 @@ void __init free_area_init_core(int nid, pg_data_t *pgdat, struct page **gmap,
 		SetPageReserved(p);//fleg=reserved
 		init_waitqueue_head(&p->wait);
 		memlist_init(&p->list);
-	}
+	}//把所有物理页初始化为保留，当前无buddy可用的物理页
 
 	offset = lmem_map - mem_map;	//初始时offset为0
 	for (j = 0; j < MAX_NR_ZONES; j++) {
@@ -745,11 +746,10 @@ void __init free_area_init_core(int nid, pg_data_t *pgdat, struct page **gmap,
 				zone->free_area[i].map = NULL;
 				break;
 			}
-
 			/*
 			 * Page buddy system uses "index >> (i+1)",
 			 * where "index" is at most "size-1".
-			 *
+			 *nn
 			 * The extra "+3" is to round down to byte
 			 * size (8 bits per byte assumption). Thus
 			 * we get "(size-1) >> (i+4)" as the last byte
